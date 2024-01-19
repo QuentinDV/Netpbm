@@ -109,7 +109,7 @@ func TestReadPBM(t *testing.T) {
 	}
 
 	// read the image with P4 magic number
-	pbm, err = ReadPBM("./testImages/pbm/testP4.pbm")
+	pbm, err = ReadPBM("testImages/pbm/testP4.pbm")
 	if err != nil {
 		t.Error(err)
 	}

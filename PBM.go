@@ -3,6 +3,7 @@ package Netpbm
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -32,6 +33,11 @@ func ReadPBM(filename string) (*PBM, error) {
 	// Ignore comments
 	for strings.HasPrefix(scanner.Text(), "#") {
 		scanner.Scan()
+	}
+
+	// Check for unexpected EOF
+	if scanner.Err() == io.EOF {
+		return nil, fmt.Errorf("unexpected EOF after ignoring comments")
 	}
 
 	// Read width and height
