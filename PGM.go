@@ -3,130 +3,287 @@ package Netpbm
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"strconv"
 	"strings"
 )
 
-// PGM represents a PGM image.
+// PGM struct definition
 type PGM struct {
+	// PGM struct: It defines the structure for a PGM (Portable GrayMap) image, including its data, dimensions, magic number, and max value.
+
 	data          [][]uint8
 	width, height int
 	magicNumber   string
-	max           int
+	max           uint
 }
 
-// ReadPGM reads a PGM image from a file and returns a struct that represents the image.
+// Function: ReadPGM
 func ReadPGM(filename string) (*PGM, error) {
+	// ReadPGM: This function reads a PGM file from a given filename. It returns a PGM struct pointer and an error if any occurs during the read process.
+
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
+
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
+	reader := bufio.NewReader(file)
 
 	// Read magic number
-	scanner.Scan()
-	magicNumber := scanner.Text()
-
-	// Ignore comments
-	for strings.HasPrefix(scanner.Text(), "#") {
-		scanner.Scan()
+	magicNumber, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("error reading magic number: %v", err)
 	}
 
-	// Read width, height, and max value
-	scanner.Scan()
-	size := strings.Fields(scanner.Text())
-	width, _ := strconv.Atoi(size[0])
-	height, _ := strconv.Atoi(size[1])
+	magicNumber = strings.TrimSpace(magicNumber)
+	if magicNumber != "P2" && magicNumber != "P5" {
+		return nil, fmt.Errorf("invalid magic number: %s", magicNumber)
+	}
 
-	scanner.Scan()
-	max, _ := strconv.Atoi(scanner.Text())
+	// Read dimensions
+	dimensions, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("error reading dimensions: %v", err)
+	}
+
+	var width, height int
+	_, err = fmt.Sscanf(strings.TrimSpace(dimensions), "%d %d", &width, &height)
+	if err != nil {
+		return nil, fmt.Errorf("invalid dimensions: %v", err)
+	}
+
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("invalid dimensions: width and height must be positive")
+	}
+
+	// Read max value
+	maxValue, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("error reading max value: %v", err)
+	}
+
+	maxValue = strings.TrimSpace(maxValue)
+	var max uint8
+	_, err = fmt.Sscanf(maxValue, "%d", &max)
+	if err != nil {
+		return nil, fmt.Errorf("invalid max value: %v", err)
+	}
 
 	// Read image data
-	var data [][]uint8
+	data := make([][]uint8, height)
+	expectedBytesPerPixel := 1
+
 	if magicNumber == "P2" {
-		data, _ = readP2(scanner, width, height)
+		// Read P2 format (ASCII)
+		for y := 0; y < height; y++ {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return nil, fmt.Errorf("error reading data at row %d: %v", y, err)
+			}
+
+			fields := strings.Fields(line)
+			rowData := make([]uint8, width)
+			for x, field := range fields {
+				if x >= width {
+					return nil, fmt.Errorf("index out of range at row %d", y)
+				}
+
+				var pixelValue uint8
+				_, err := fmt.Sscanf(field, "%d", &pixelValue)
+				if err != nil {
+					return nil, fmt.Errorf("error parsing pixel value at row %d, column %d: %v", y, x, err)
+				}
+
+				rowData[x] = pixelValue
+			}
+
+			data[y] = rowData
+		}
+
 	} else if magicNumber == "P5" {
-		data, _ = readP5(file, width, height)
-	} else {
-		return nil, fmt.Errorf("unsupported PGM format: %s", magicNumber)
+		// Read P5 format (binary)
+		for y := 0; y < height; y++ {
+			row := make([]byte, width*expectedBytesPerPixel)
+			n, err := reader.Read(row)
+			if err != nil {
+				if err == io.EOF {
+					return nil, fmt.Errorf("unexpected end of file at row %d", y)
+				}
+
+				return nil, fmt.Errorf("error reading pixel data at row %d: %v", y, err)
+			}
+
+			if n < width*expectedBytesPerPixel {
+				return nil, fmt.Errorf("unexpected end of file at row %d, expected %d bytes, got %d", y, width*expectedBytesPerPixel, n)
+			}
+
+			rowData := make([]uint8, width)
+			for x := 0; x < width; x++ {
+				pixelValue := uint8(row[x*expectedBytesPerPixel])
+				rowData[x] = pixelValue
+			}
+
+			data[y] = rowData
+		}
+
 	}
 
-	return &PGM{
-		data:        data,
-		width:       width,
-		height:      height,
-		magicNumber: magicNumber,
-		max:         max,
-	}, nil
+	// Return the PGM struct
+	return &PGM{data, width, height, magicNumber, uint(max)}, nil
 }
 
-// Size returns the width and height of the image.
 func (pgm *PGM) Size() (int, int) {
 	return pgm.width, pgm.height
 }
 
-// At returns the value of the pixel at (x, y).
 func (pgm *PGM) At(x, y int) uint8 {
-	return pgm.data[y][x]
+	if x >= 0 && x < pgm.width && y >= 0 && y < pgm.height {
+		return pgm.data[y][x]
+	}
+
+	return 0
 }
 
 // Set sets the value of the pixel at (x, y).
 func (pgm *PGM) Set(x, y int, value uint8) {
-	pgm.data[y][x] = value
+	if x >= 0 && x < pgm.width && y >= 0 && y < pgm.height {
+		pgm.data[y][x] = value
+	}
+
 }
 
-// Save saves the PGM image to a file and returns an error if there was a problem.
+// Save saves the PGM image to a file in the opposite format (P2 or P5) and returns an error if there was a problem.
 func (pgm *PGM) Save(filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
+
 	defer file.Close()
 
 	writer := bufio.NewWriter(file)
+	_, err = fmt.Fprintln(writer, pgm.magicNumber)
+	if err != nil {
+		return fmt.Errorf("error writing magic number: %v", err)
+	}
 
-	// Write magic number, width, height, and max value
-	fmt.Fprintf(writer, "%s\n%d %d\n%d\n", pgm.magicNumber, pgm.width, pgm.height, pgm.max)
+	// Write dimensions
+	_, err = fmt.Fprintf(writer, "%d %d\n", pgm.width, pgm.height)
+	if err != nil {
+		return fmt.Errorf("error writing dimensions: %v", err)
+	}
+
+	// Write max value
+	_, err = fmt.Fprintln(writer, pgm.max)
+	if err != nil {
+		return fmt.Errorf("error writing max value: %v", err)
+	}
+
+	for _, row := range pgm.data {
+		if len(row) != pgm.width {
+			return fmt.Errorf("inconsistent row length in data")
+		}
+
+	}
 
 	// Write image data
 	if pgm.magicNumber == "P2" {
-		writeP2(writer, pgm.data)
+		err = saveP2PGM(writer, pgm)
+		if err != nil {
+			return err
+		}
+
 	} else if pgm.magicNumber == "P5" {
-		writeP5(file, pgm.data)
-	} else {
-		return fmt.Errorf("unsupported PGM format: %s", pgm.magicNumber)
+		err = saveP5PGM(writer, pgm)
+		if err != nil {
+			return err
+		}
+
 	}
 
-	writer.Flush()
+	return writer.Flush()
+}
+
+// saveP2PGM saves the PGM image in P2 format (ASCII).
+func saveP2PGM(file *bufio.Writer, pgm *PGM) error {
+	for y := 0; y < pgm.height; y++ {
+		for x := 0; x < pgm.width; x++ {
+			// Write the pixel value
+			_, err := fmt.Fprint(file, pgm.data[y][x])
+			if err != nil {
+				return fmt.Errorf("error writing pixel data at row %d, column %d: %v", y, x, err)
+			}
+
+			// Add a space after each pixel, except the last one in a row
+			if x < pgm.width-1 {
+				_, err = fmt.Fprint(file, " ")
+				if err != nil {
+					return fmt.Errorf("error writing space after pixel at row %d, column %d: %v", y, x, err)
+				}
+
+			}
+
+		}
+
+		// Add a newline after each row
+		_, err := fmt.Fprintln(file)
+		if err != nil {
+			return fmt.Errorf("error writing newline after row %d: %v", y, err)
+		}
+
+	}
+
+	return nil
+}
+
+// saveP5PGM saves the PGM image in P5 format (binary).
+func saveP5PGM(file *bufio.Writer, pgm *PGM) error {
+	for y := 0; y < pgm.height; y++ {
+		row := make([]byte, pgm.width)
+		for x := 0; x < pgm.width; x++ {
+			row[x] = byte(pgm.data[y][x])
+		}
+
+		_, err := file.Write(row)
+		if err != nil {
+			return fmt.Errorf("error writing pixel data at row %d: %v", y, err)
+		}
+
+	}
+
 	return nil
 }
 
 // Invert inverts the colors of the PGM image.
 func (pgm *PGM) Invert() {
-	for y := 0; y < pgm.height; y++ {
-		for x := 0; x < pgm.width; x++ {
-			pgm.data[y][x] = uint8(pgm.max) - pgm.data[y][x]
+	for i := range pgm.data {
+		for j := range pgm.data[i] {
+			pgm.data[i][j] = uint8(pgm.max) - pgm.data[i][j]
 		}
+
 	}
+
 }
 
 // Flip flips the PGM image horizontally.
 func (pgm *PGM) Flip() {
-	for y := 0; y < pgm.height; y++ {
-		for x := 0; x < pgm.width/2; x++ {
-			pgm.data[y][x], pgm.data[y][pgm.width-x-1] = pgm.data[y][pgm.width-x-1], pgm.data[y][x]
+	for i := range pgm.data {
+		for j, k := 0, len(pgm.data[i])-1; j < k; j, k = j+1, k-1 {
+			pgm.data[i][j], pgm.data[i][k] = pgm.data[i][k], pgm.data[i][j]
 		}
+
 	}
+
 }
 
 // Flop flops the PGM image vertically.
 func (pgm *PGM) Flop() {
-	for y := 0; y < pgm.height/2; y++ {
-		pgm.data[y], pgm.data[pgm.height-y-1] = pgm.data[pgm.height-y-1], pgm.data[y]
+	for i := 0; i < pgm.height/2; i++ {
+		pgm.data[i], pgm.data[pgm.height-i-1] = pgm.data[pgm.height-i-1], pgm.data[i]
 	}
+
 }
 
 // SetMagicNumber sets the magic number of the PGM image.
@@ -134,91 +291,56 @@ func (pgm *PGM) SetMagicNumber(magicNumber string) {
 	pgm.magicNumber = magicNumber
 }
 
-// SetMaxValue sets the max value of the PGM image.
-func (pgm *PGM) SetMaxValue(maxValue uint8) {
-	pgm.max = int(maxValue)
+func (pgm *PGM) SetMaxValue(maxValue uint8) { // Doesnt work
+	for y := 0; y < pgm.height; y++ {
+		for x := 0; x < pgm.width; x++ {
+			// Scale the pixel values based on the new max value
+			scaledValue := float64(pgm.data[y][x]) * float64(maxValue) / float64(pgm.max)
+			// Round to the nearest integer
+			newValue := uint8(scaledValue)
+			pgm.data[y][x] = newValue
+		}
+
+	}
+
+	// Update the max value
+	pgm.max = uint(maxValue)
 }
 
-// Rotate90CW rotates the PGM image 90° clockwise.
+// Rotate90CW rotates the PGM image 90Â° clockwise.
 func (pgm *PGM) Rotate90CW() {
-	newData := make([][]uint8, pgm.width)
-	for x := 0; x < pgm.width; x++ {
-		newData[x] = make([]uint8, pgm.height)
-		for y := 0; y < pgm.height; y++ {
-			newData[x][y] = pgm.data[pgm.height-y-1][x]
-		}
+	if pgm.width <= 0 || pgm.height <= 0 {
+		return
 	}
+
+	newData := make([][]uint8, pgm.width)
+	for i := 0; i < pgm.width; i++ {
+		newData[i] = make([]uint8, pgm.height)
+		for j := 0; j < pgm.height; j++ {
+			newData[i][j] = pgm.data[pgm.height-j-1][i]
+		}
+
+	}
+
 	pgm.data = newData
 	pgm.width, pgm.height = pgm.height, pgm.width
 }
 
-// ToPBM converts the PGM image to PBM.
 func (pgm *PGM) ToPBM() *PBM {
-	data := make([][]bool, pgm.height)
-	for y := 0; y < pgm.height; y++ {
-		data[y] = make([]bool, pgm.width)
-		for x := 0; x < pgm.width; x++ {
-			data[y][x] = pgm.data[y][x] > uint8(pgm.max/2)
-		}
-	}
-	return &PBM{
-		data:        data,
+	pbm := &PBM{
+		data:        make([][]bool, pgm.height),
 		width:       pgm.width,
 		height:      pgm.height,
-		magicNumber: "P4",
+		magicNumber: "P1",
 	}
-}
 
-// Additional helper functions
-
-func readP2(scanner *bufio.Scanner, width, height int) ([][]uint8, error) {
-	data := make([][]uint8, height)
-	for y := 0; y < height; y++ {
-		data[y] = make([]uint8, width)
-		lineValues := strings.Fields(scanner.Text())
-		for x := 0; x < width; x++ {
-			value, err := strconv.Atoi(lineValues[x])
-			if err != nil {
-				return nil, err
-			}
-			data[y][x] = uint8(value)
+	for y := 0; y < pgm.height; y++ {
+		pbm.data[y] = make([]bool, pgm.width)
+		for x := 0; x < pgm.width; x++ {
+			pbm.data[y][x] = pgm.data[y][x] < uint8(pgm.max/2)
 		}
-		scanner.Scan()
+
 	}
-	return data, nil
-}
 
-func readP5(file *os.File, width, height int) ([][]uint8, error) {
-	data := make([][]uint8, height)
-	for y := 0; y < height; y++ {
-		data[y] = make([]uint8, width)
-		buf := make([]byte, width)
-		_, err := file.Read(buf)
-		if err != nil {
-			return nil, err
-		}
-		for x := 0; x < width; x++ {
-			data[y][x] = uint8(buf[x])
-		}
-	}
-	return data, nil
-}
-
-func writeP2(writer *bufio.Writer, data [][]uint8) {
-	for y := 0; y < len(data); y++ {
-		for x := 0; x < len(data[y]); x++ {
-			fmt.Fprintf(writer, "%d ", data[y][x])
-		}
-		fmt.Fprintln(writer)
-	}
-}
-
-func writeP5(file *os.File, data [][]uint8) {
-	for y := 0; y < len(data); y++ {
-		buf := make([]byte, len(data[y]))
-		for x := 0; x < len(data[y]); x++ {
-			buf[x] = byte(data[y][x])
-		}
-		file.Write(buf)
-	}
+	return pbm
 }

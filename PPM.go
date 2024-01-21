@@ -133,21 +133,21 @@ func (ppm *PPM) SetMaxValue(maxValue uint8) {
 	ppm.max = uint(maxValue)
 }
 
-// Rotate90CW rotates the PPM image 90° clockwise.
+// Rotate90CW rotates the PPM image 90Â° clockwise.
 func (ppm *PPM) Rotate90CW() {
-	// Transpose the image
+	newData := make([][]Pixel, ppm.width)
+	for i := range newData {
+		newData[i] = make([]Pixel, ppm.height)
+	}
+
 	for i := 0; i < ppm.height; i++ {
-		for j := i + 1; j < ppm.width; j++ {
-			ppm.data[i][j], ppm.data[j][i] = ppm.data[j][i], ppm.data[i][j]
+		for j := 0; j < ppm.width; j++ {
+			newData[j][ppm.height-1-i] = ppm.data[i][j]
 		}
 	}
 
-	// Reverse each row
-	for i := 0; i < ppm.height; i++ {
-		for j := 0; j < ppm.width/2; j++ {
-			ppm.data[i][j], ppm.data[i][ppm.width-j-1] = ppm.data[i][ppm.width-j-1], ppm.data[i][j]
-		}
-	}
+	ppm.data = newData
+	ppm.width, ppm.height = ppm.height, ppm.width
 }
 
 // ToPGM converts the PPM image to PGM.
@@ -158,7 +158,7 @@ func (ppm *PPM) ToPGM() *PGM {
 		width:       ppm.width,
 		height:      ppm.height,
 		magicNumber: "P2",
-		max:         int(ppm.max), // Convert ppm.max to int
+		max:         ppm.max, // Convert ppm.max to uint
 	}
 
 	for i := 0; i < ppm.height; i++ {
