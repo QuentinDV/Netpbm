@@ -384,29 +384,3 @@ func (ppm *PPM) SavePNG(filename string) error {
 
 	return png.Encode(file, img)
 }
-
-// Example usage:
-func main() {
-	ppm, err := ReadPPM("input.ppm")
-	if err != nil {
-		fmt.Println("Error reading PPM:", err)
-		return
-	}
-
-	// Perform operations on the PPM image
-	ppm.Invert()
-	ppm.Flip()
-	ppm.Flop()
-	ppm.Rotate90CW()
-
-	// Example drawing operations
-	ppm.DrawFilledRectangle(Point{10, 10}, 50, 30, Pixel{255, 0, 0})
-	ppm.DrawFilledCircle(Point{80, 60}, 20, Pixel{0, 0, 255})
-	ppm.DrawFilledTriangle(Point{120, 10}, Point{160, 10}, Point{140, 40}, Pixel{0, 255, 0})
-
-	// Draw filled polygon
-	points := []Point{{180, 10}, {220, 10}, {220, 40}, {200, 60}, {180, 40}}
-	ppm.DrawFilledPolygon(points, Pixel{255, 255, 0})
-
-	ppm.SavePNG("output.png")
-}
