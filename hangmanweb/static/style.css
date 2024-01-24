@@ -1,0 +1,75 @@
+* {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+    text-decoration: none;
+    font-family: 'Games', sans-serif;
+}
+
+body {
+    position: relative;
+    background-color: #ececec;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+}
+
+header {
+    display: flex;
+    background-color: #2f435e;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 4px solid black;
+    width: 100%;
+}
+header a {
+    font-family: 'Games', sans-serif;
+    color: #ffffff;
+    font-size: 75px;
+    text-decoration: none;
+}
+
+main {
+    flex: 1; /* Occupe l'espace restant dans le conteneur flex (body) */
+    width: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+footer {
+    display: flex;
+    justify-content: space-around;
+    background-color: #2f435e;
+    color: #ffffff;
+    text-align: center;
+    padding: 10px;
+    width: 100%;
+}
+footer a {
+    color: #ffffff;
+    margin: 0 10px;
+}
+
+/* form  {
+    text-align: center;
+    justify-content: center;
+} */
+
+.difficulty {
+    font-size: 50px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+}
+
+.back {
+    align-self: flex-start; /* Placez cet élément en haut du conteneur flex (main) */
+    padding: 10px;
+}
